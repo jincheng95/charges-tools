@@ -2,7 +2,9 @@ setup.py
 ChargesTools.egg-info/PKG-INFO
 ChargesTools.egg-info/SOURCES.txt
 ChargesTools.egg-info/dependency_links.txt
+ChargesTools.egg-info/requires.txt
 ChargesTools.egg-info/top_level.txt
 charges/cube.py
 charges/exceptions.py
 charges/molecule.py
+charges/utils.py
