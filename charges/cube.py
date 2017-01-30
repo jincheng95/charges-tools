@@ -239,11 +239,11 @@ class Cube(object):
                      ).min(axis=1).reshape(self.n_voxels)
 
     @property
-    def grid_args(self):
+    def _grid_args(self):
         return self.axes, self.molecule, self.origins, self.unit_vectors, self.n_voxels
 
     def __add__(self, other):
-        args = self.grid_args
+        args = self._grid_args
         if isinstance(other, int) or isinstance(other, float) or isinstance(other, np.ndarray):
             return Cube(self.from_file, self.values + other, *args)
         elif isinstance(other, Cube):
@@ -264,7 +264,7 @@ class Cube(object):
             raise AttributeError
 
     def __mul__(self, other):
-        args = self.grid_args
+        args = self._grid_args
         if isinstance(other, int) or isinstance(other, float) or isinstance(other, np.ndarray):
             return Cube(self.from_file, self.values * other, *args)
         elif isinstance(other, Cube):
@@ -275,7 +275,7 @@ class Cube(object):
             raise AttributeError
 
     def __truediv__(self, other):
-        args = self.grid_args
+        args = self._grid_args
         if isinstance(other, int) or isinstance(other, float) or isinstance(other, np.ndarray):
             return Cube(self.from_file, self.values * other, *args)
         elif isinstance(other, Cube):
@@ -286,7 +286,7 @@ class Cube(object):
             raise AttributeError
 
     def __pow__(self, power, modulo=None):
-        args = self.grid_args
+        args = self._grid_args
         if isinstance(power, int) or isinstance(power, float) or isinstance(power, np.ndarray):
             return Cube(self.from_file, self.values ** power, *args)
         elif isinstance(power, Cube):
