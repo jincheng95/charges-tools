@@ -6,5 +6,6 @@ except ImportError:
 setup(
     name="ChargesTools",
     version="0.1",
-    packages=['charges'], install_requires=['numpy', 'periodictable']
+    packages=['charges'],
+    install_requires=['numpy', 'periodictable']
 )

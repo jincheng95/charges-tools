@@ -5,6 +5,10 @@ import re
 import numpy as np
 from copy import deepcopy
 
+from scipy.spatial.distance import cdist
+
+import charges
+from charges import constants
 from charges.exceptions import InputError
 from charges.utils import int_if_close, atomic_number_to_symbol, symbol_to_atomic_number
 
@@ -19,7 +23,7 @@ class Atom(object):
         self.atomic_number = atomic_number
         self.symbol = atomic_number_to_symbol(atomic_number)
         self.charge = charge
-        self.position = np.array(list(map(float, position)), dtype=np.int32)
+        self.position = np.array(list(map(float, position)))
 
     def __repr__(self):
         if self.charge > 0:
@@ -137,7 +141,7 @@ class Molecule(object):
     def copy(cls, molecule):
         atoms = [Atom.copy(atom) for atom in molecule.atoms]
 
-        if len(molecule.bonds) > 0:
+        if molecule.bonds:
             bonds = [Bond.copy(bond, atoms) for bond in molecule.bonds]
         else:
             bonds = None
@@ -181,7 +185,7 @@ class Molecule(object):
             atomic_number = int(segments[0])
             atoms.append(Atom(index+1, atomic_number,
                               charge=int_if_close(float(segments[1]) - atomic_number),
-                              position=np.array(list(map(float, segments[2:])), dtype=np.int32))
+                              position=np.array(list(map(float, segments[2:]))))
                          )
         return cls(atoms, *args, **kwargs)
 
@@ -193,6 +197,17 @@ class Molecule(object):
                 return zip([self.atoms[label-1] for label in labels])
         except IndexError:
             raise InputError('Label number argument is larger than the number of atoms contained in this molecule.')
+
+    def list_of_atom_property(self, property_name):
+        """
+        Outputs a list of atom properties within field ``property_name`.
+            For example, if ``property_name = 'atomic_number'``,
+            this function will output a list of atomic numbers ordered by their labels.
+        :param property_name: Key of the property of interest.
+            Valid properties are: ``atomic_number``, ``label``, ``symbol``, ``position``, ``charge``.
+        :return: List of properties.
+        """
+        return [vars(atom)[property_name] for atom in self.atoms]
 
 
 class MoleculeWithCharge(Molecule):
@@ -237,7 +252,7 @@ class MoleculeWithCharge(Molecule):
     def guess_charge_method(self, file_name):
         file_name = os.path.splitext(file_name)[0].lower()
 
-        self.is_averaged = "compromise" in file_name
+        self.is_averaged = "average" in file_name
         self.is_restrained = "resp" in file_name or "restrain" in file_name
         self.is_equivalenced = "equivalence" in file_name or self.is_restrained
         self.is_compromised = "compromise" in file_name
@@ -294,3 +309,26 @@ class MoleculeWithCharge(Molecule):
         parser_function = parsers.get(extension.lower())
         if parser_function is not None:
             return parser_function(file_name_full, base_molecule, *args, **kwargs)
+
+    def reproduce_cube(self, template_cube,  **kwargs):
+        """
+        Based on the respective charges of atoms within this molecule,
+            reproduce the 3-dimensional electrostatic potential as a :class:`charges.cube.Cube` object.
+
+        :param template_cube: The reproduced volume will have the same points density and size to this template cube.
+        :param constant: Multiplication factor of the potential, equivalent of (1/4πe_0).
+            Defaults to unity, which gives potentials in atomic units.
+        :param kwargs: Extra keyword arguments to pass to the :func:`scipy.spatial.distance.cdist` function,
+            which calculates the distances.
+            By default, the Euclidean distances are used.
+        :return: Reproduced potential stored within a new :class:`charges.cube.Cube` object.
+        """
+        atomic_charges = np.array(self.list_of_atom_property('charge'))
+        positions = np.array(template_cube.molecule.list_of_atom_property('position'))
+
+        # Calculate the distances
+        distances = cdist(template_cube.flat_coordinates, positions, **kwargs)
+        # Calculate per-atom potential, then sum
+        potentials = (np.array(atomic_charges) / distances).sum(axis=1)
+
+        return charges.cube.Cube.assign_new_values_to(template_cube, potentials.reshape(template_cube.n_voxels))
