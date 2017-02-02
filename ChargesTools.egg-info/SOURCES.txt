@@ -4,7 +4,8 @@ ChargesTools.egg-info/SOURCES.txt
 ChargesTools.egg-info/dependency_links.txt
 ChargesTools.egg-info/requires.txt
 ChargesTools.egg-info/top_level.txt
-charges/cube.py
-charges/exceptions.py
-charges/molecule.py
-charges/utils.py
+chargetools/__init__.py
+chargetools/constants.py
+chargetools/entities.py
+chargetools/exceptions.py
+chargetools/grids.py

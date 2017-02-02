@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import os
 import itertools
 import re
@@ -5,12 +6,12 @@ import re
 import numpy as np
 from copy import deepcopy
 
+from collections import Iterable
 from scipy.spatial.distance import cdist
 
-import charges
-from charges import constants
-from charges.exceptions import InputError
-from charges.utils import int_if_close, atomic_number_to_symbol, symbol_to_atomic_number
+from chargetools import constants, grids
+from chargetools.exceptions import InputError
+from chargetools.utils.utils import int_if_close, atomic_number_to_symbol, symbol_to_atomic_number
 
 
 class Atom(object):
@@ -23,7 +24,11 @@ class Atom(object):
         self.atomic_number = atomic_number
         self.symbol = atomic_number_to_symbol(atomic_number)
         self.charge = charge
-        self.position = np.array(list(map(float, position)))
+
+        if isinstance(position, Iterable):
+            self.position = np.array(list(map(float, position)))
+        else:
+            self.position = None
 
     def __repr__(self):
         if self.charge > 0:
@@ -113,6 +118,22 @@ class Bond(object):
         bond_order = int(segments[4])
         return cls(*[all_atoms[int(label) - 1] for label in bonding_atom_labels],
                    bond_order=bond_order)
+
+    def contains(self, atom, label_only=False):
+        """
+        Checks if an atom is contained in this bond.
+
+        :param atom: Atom to be checked.
+        :param label_only: If `True`, perform a label comparison only.
+            If `False`, check if the atom objects are same instances.
+        :return: Whether the atom argument is one of the bonding atoms.
+        """
+        for bonding_atom in self.bonding_atoms:
+            if not label_only and bonding_atom == atom:
+                return True
+            if label_only and atom.label == bonding_atom.label:
+                return True
+        return False
 
 
 class Molecule(object):
@@ -211,12 +232,12 @@ class Molecule(object):
 
 
 class MoleculeWithCharge(Molecule):
-    all_sampling_schemes = {
-        'CHelpG': ["(full, chelpg)", "chelpg"],
-        "MK": ["(full, mk)", "mk", "merz", "kollman"],
-        "CHelp": ["(full, chelp)", "chelp"],
-        "MK-UFF": ["(full, mkuff)", "mkuff", "mk-uff", "mk_uff",],
-    }
+    all_sampling_schemes = OrderedDict()
+    all_sampling_schemes['MK-UFF'] = ["(full, mkuff)", "mkuff", "mk-uff", "mk_uff", ]
+    all_sampling_schemes['CHelpG'] = ["(full, chelpg)", "chelpg"]
+    all_sampling_schemes['MK'] = ["(full, mk)", "mk", "merz", "kollman"]
+    all_sampling_schemes['CHelp'] = ["(full, chelp)", "chelp"]
+
     all_charge_methods = {
         'NBO': ['nbo', 'natural'],
         'Mulliken': ['mulliken', 'mülliken'],
@@ -266,6 +287,8 @@ class MoleculeWithCharge(Molecule):
                     break
             if found:
                 break
+        else:
+            self.sampling_scheme = None
 
         found = False
         for charge_method, charge_method_identifiers in self.all_charge_methods.items():
@@ -276,6 +299,8 @@ class MoleculeWithCharge(Molecule):
                     break
             if found:
                 break
+        else:
+            self.charge_method = None
 
     @classmethod
     def from_plaintext_list(cls, file_name_full, base_molecule, *args, **kwargs):
@@ -296,8 +321,53 @@ class MoleculeWithCharge(Molecule):
                    charge=int_if_close(charge), name=molecule.name, *args, **kwargs)
 
     @classmethod
-    def mulliken_from_gaussian_log(cls, file_name_full, base_molecule):
-        pass
+    def from_gaussian_log(cls, file_name_full, base_molecule, *args, **kwargs):
+        with open(file_name_full, 'r') as f:
+            lines = f.readlines()
+
+        # Locate starting point of ESP charges text block
+        try:
+            start_index = lines.index(" ESP charges:\n") + 2
+        except ValueError:
+            raise InputError('Cannot find charge information within this Gaussian log file.')
+
+        # Parse the input keywords to find the sampling scheme
+        sampling_scheme = False
+        for line in lines[58:158]:
+            if sampling_scheme:
+                break
+            for segment in line.split():
+                if "pop=" in segment:
+                    # look if keyword contains default set of keywords
+                    for name, identifiers in cls.all_sampling_schemes.items():
+                        if sampling_scheme:
+                            break
+                        for identifier in identifiers:
+                            if identifier.lower() in segment.lower():
+                                sampling_scheme = name
+                            if sampling_scheme:
+                                break
+
+        if not sampling_scheme:
+            raise InputError('Cannot find sampling scheme information within this Gaussian log file.')
+
+        molecule = Molecule.copy(base_molecule)
+        for atom, line in zip(molecule.atoms, lines[start_index:]):
+            if "Sum of ESP charges" in line:
+                total_charge_str = line.split()[-1]
+                break
+            if len(line.split()) >= 3:
+                charge_str = line.split()[-1]
+                atom.charge = int_if_close(float(charge_str))
+
+        try:
+            total_charge_str
+        except NameError:
+            total_charge_str = '0'
+
+        return cls(file_name_full, molecule.atoms, bonds=molecule.bonds,
+                   charge=int_if_close(float(total_charge_str)),
+                   is_averaged=False, is_compromised=False, is_equivalenced=False, is_restrained=False)
 
     @classmethod
     def from_file(cls, file_name_full, base_molecule, *args, **kwargs):
@@ -305,10 +375,26 @@ class MoleculeWithCharge(Molecule):
 
         parsers = {
             '.txt': cls.from_plaintext_list,
+            '.log': cls.from_gaussian_log,
         }
         parser_function = parsers.get(extension.lower())
         if parser_function is not None:
             return parser_function(file_name_full, base_molecule, *args, **kwargs)
+        raise InputError('Extension not supported by any of the parser functions.')
+
+    @classmethod
+    def mulliken_from_gaussian_log(cls, file_name_full, base_molecule):
+        pass
+
+    @property
+    def charge_on(self, atom_label):
+        """
+        Output charge bourne by a labelled atom.
+        """
+        for atom in self.atoms:
+            if atom.label == atom_label:
+                return atom.charge
+        raise ValueError('Atom with this label has not been found.')
 
     def reproduce_cube(self, template_cube,  **kwargs):
         """
@@ -316,8 +402,6 @@ class MoleculeWithCharge(Molecule):
             reproduce the 3-dimensional electrostatic potential as a :class:`charges.cube.Cube` object.
 
         :param template_cube: The reproduced volume will have the same points density and size to this template cube.
-        :param constant: Multiplication factor of the potential, equivalent of (1/4πe_0).
-            Defaults to unity, which gives potentials in atomic units.
         :param kwargs: Extra keyword arguments to pass to the :func:`scipy.spatial.distance.cdist` function,
             which calculates the distances.
             By default, the Euclidean distances are used.
@@ -331,4 +415,4 @@ class MoleculeWithCharge(Molecule):
         # Calculate per-atom potential, then sum
         potentials = (np.array(atomic_charges) / distances).sum(axis=1)
 
-        return charges.cube.Cube.assign_new_values_to(template_cube, potentials.reshape(template_cube.n_voxels))
+        return grids.Cube.assign_new_values_to(template_cube, potentials.reshape(template_cube.n_voxels))

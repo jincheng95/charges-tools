@@ -4,8 +4,8 @@ except ImportError:
     from distutils.core import setup
 
 setup(
-    name="ChargesTools",
+    name="ChargeTools",
     version="0.1",
-    packages=['charges'],
-    install_requires=['numpy', 'periodictable']
+    packages=['chargetools'],
+    install_requires=['numpy', 'periodictable', 'scipy']
 )

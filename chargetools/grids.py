@@ -3,10 +3,8 @@ from collections import OrderedDict
 import numpy as np
 from scipy.spatial.distance import cdist
 
-from charges.exceptions import InputError
-from charges.molecule import Molecule
-
-AXES_NAMES = ('x', 'y', 'z',)
+from chargetools.constants import AXES_NAMES
+from chargetools.exceptions import InputError
 
 
 class Cube(object):
@@ -71,6 +69,7 @@ class Cube(object):
         # Store atom positions
         if base_molecule is None:
             atom_header = lines[6:6+n_atoms]
+            from chargetools.entities import Molecule
             base_molecule = Molecule.from_cube_header(atom_header)
 
         # Create a 1-dimensional flat array containing values in the .cub file
@@ -118,7 +117,7 @@ class Cube(object):
                 if not counter % 6:
                     s += '\n'
                 # cube file format requires line break after every z value has been depleted for x_i, y_j
-                if not counter % self.n_voxels[-1]:
+                elif not counter % self.n_voxels[-1]:
                     s += '\n'
 
                 f.write(s)
@@ -240,8 +239,12 @@ class Cube(object):
 
     @property
     def _grid_args(self):
+        """Provides ``self.__init__`` arguments for metadata. Useful for copying an instance of cube."""
         return self.axes, self.molecule, self.origins, self.unit_vectors, self.n_voxels
 
+    """
+    Several native Python magic methods for performing cube_1 + cube_2, cube_1 * cube_2 operations, etc.
+    """
     def __add__(self, other):
         args = self._grid_args
         if isinstance(other, int) or isinstance(other, float) or isinstance(other, np.ndarray):
