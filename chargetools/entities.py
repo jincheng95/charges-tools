@@ -20,8 +20,8 @@ class Atom(object):
     """
 
     def __init__(self, label, atomic_number, charge, position=None):
-        self.label = label
-        self.atomic_number = atomic_number
+        self.label = int(label)
+        self.atomic_number = int(atomic_number)
         self.symbol = atomic_number_to_symbol(atomic_number)
         self.charge = charge
 
@@ -42,9 +42,17 @@ class Atom(object):
 
     def __eq__(self, other):
         if isinstance(other, Atom):
-            return other.atomic_number == self.atomic_number
+            return other.label == self.label
         elif isinstance(other, int):
-            return self.atomic_number == int
+            return self.label == other
+
+    def descriptor_compare(self, descriptor):
+        if isinstance(descriptor, str):
+            return self.symbol == descriptor
+        elif isinstance(descriptor, int):
+            return self.label == descriptor
+        elif isinstance(descriptor, Atom) or issubclass(descriptor, Atom):
+            return self is descriptor
 
     @classmethod
     def copy(cls, atom):
@@ -219,6 +227,12 @@ class Molecule(object):
         except IndexError:
             raise InputError('Label number argument is larger than the number of atoms contained in this molecule.')
 
+    def select_symbol(self, *symbols):
+        atoms = [atom for atom in self.atoms if atom.symbol in symbols]
+        if len(atoms) == 1:
+            return atoms[0]
+        return atoms
+
     def list_of_atom_property(self, property_name):
         """
         Outputs a list of atom properties within field ``property_name`.
@@ -229,6 +243,67 @@ class Molecule(object):
         :return: List of properties.
         """
         return [vars(atom)[property_name] for atom in self.atoms]
+
+    def if_bonded(self, atom, descriptor, min_bond_order=0.):
+        """
+        Check if argument atoms are bonded within the same bond.
+
+        :param atom: can be either:
+            *. a string of atom symbols, in which case all atoms with that atomic symbol count as being included.
+            *. an integer of the atom's label.
+            *. an atom object, in which case its label will be compared rather than an identity comparison.
+        :param min_bond_order: Minimum bond order that counts as a chemical `bond`.
+        :return: If all argument atoms are bonded in the same bond.
+        """
+
+        for i, bond in enumerate(self.bonds):
+            has_atom, has_descriptor = False, False
+            for bonding_atom in bond.bonding_atoms:
+                if bonding_atom.descriptor_compare(atom):
+                    has_atom = True
+                elif bonding_atom.descriptor_compare(descriptor):
+                    has_descriptor = True
+            if has_atom and has_descriptor:
+                return True
+        return False
+
+    def select_bonded(self, atom):
+        """
+        Select all atoms bonded to the input atom.
+
+        :param atom: Atom descriptors, can be either:
+            *. a string of atom symbols, in which case all atoms with that atomic symbol count as being included.
+            *. an integer of the atom's label.
+            *. an atom object, in which case its label will be compared rather than an identity comparison.
+        :return: A list of all bonded atoms.
+        """
+        bonded_atoms = []
+        for bond in self.bonds:
+            if bond.contains(atom):
+                bonded_atoms += [bonding_atom for bonding_atom in bond.bonding_atoms if bonding_atom is not atom]
+        return bonded_atoms
+
+    def number_connections(self, atom_a, atom_b, min_bond_order=0.):
+        """
+        Get the number of bonds connecting atom 1 and atom 2.
+
+        :param atom_a: Atom 1, must be an :class:`entities.Atom` object.
+        :param atom_b: Atom 2, must be an :class:`entities.Atom` object.
+        :param min_bond_order: Minimum bond order for a connection to be counted.
+        :return: Number of chemical bonds between two input atoms.
+        """
+
+        def iter_atoms(_a, _b, n, min_bond_order_, stop):
+            if _a in self.select_bonded(_b):
+                return n
+            else:
+                n += 1
+                if n > stop:
+                    return float("inf")
+                for bonded in self.select_bonded(_b):
+                    return iter_atoms(_a, bonded, n, min_bond_order_, stop)
+
+        return iter_atoms(atom_a, atom_b, 1, min_bond_order, len(self.bonds))
 
 
 class MoleculeWithCharge(Molecule):
