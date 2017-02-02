@@ -8,6 +8,15 @@ from chargetools.exceptions import InputError
 
 
 def parse_directory_for_charge(directory_path, extensions=None, base_molecule=None, **kwargs):
+    """
+    Parse all charge assignment files within a directory into a list of :class:`entities.MoleculeWithCharge` objects.
+
+    :param directory_path: Path of directory to be searched.
+    :param extensions: Extensions of files to be parsed.
+    :param base_molecule: Base molecule for construction of all molecules.
+    :param kwargs: Extra keyword arguments for the instantiation method of the charge objects.
+    :return: A list of :class:`entities.MoleculeWithCharge` objects, parsed from files.
+    """
     valid_files = []
     # For each possible extension, produce glob matching string, e.g. /path/*.log, /path/*.txt, etc.
     if extensions is not None:

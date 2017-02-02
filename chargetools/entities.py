@@ -466,7 +466,7 @@ class MoleculeWithCharge(Molecule):
     @property
     def charge_on(self, atom_label):
         """
-        Output charge bourne by a labelled atom.
+        Output charge borne by a labelled atom.
         """
         for atom in self.atoms:
             if atom.label == atom_label:
