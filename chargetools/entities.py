@@ -267,10 +267,11 @@ class Molecule(object):
                 return True
         return False
 
-    def select_bonded(self, atom):
+    def select_bonded(self, atom, min_bond_order=0.):
         """
         Select all atoms bonded to the input atom.
 
+        :param min_bond_order: Minimum bond order with which an atom is bonded, for the atom to be included.
         :param atom: Atom descriptors, can be either:
             *. a string of atom symbols, in which case all atoms with that atomic symbol count as being included.
             *. an integer of the atom's label.
@@ -280,28 +281,29 @@ class Molecule(object):
         bonded_atoms = []
         for bond in self.bonds:
             if bond.contains(atom):
-                bonded_atoms += [bonding_atom for bonding_atom in bond.bonding_atoms if bonding_atom is not atom]
+                bonded_atoms += [bonding_atom for bonding_atom in bond.bonding_atoms
+                                 if bonding_atom is not atom and bond.bond_order > min_bond_order]
         return bonded_atoms
 
     def number_connections(self, atom_a, atom_b, min_bond_order=0.):
         """
-        Get the number of bonds connecting atom 1 and atom 2.
+        Get the number of bonds connecting atom A and atom B.
 
-        :param atom_a: Atom 1, must be an :class:`entities.Atom` object.
-        :param atom_b: Atom 2, must be an :class:`entities.Atom` object.
+        :param atom_a: Atom A, must be an :class:`entities.Atom` object.
+        :param atom_b: Atom B, must be an :class:`entities.Atom` object.
         :param min_bond_order: Minimum bond order for a connection to be counted.
         :return: Number of chemical bonds between two input atoms.
         """
 
         def iter_atoms(_a, _b, n, min_bond_order_, stop):
-            if _a in self.select_bonded(_b):
+            if _a in self.select_bonded(_b, min_bond_order_):
                 return n
             else:
-                n += 1
-                if n > stop:
+                _n = n + 1
+                if _n > stop:
                     return float("inf")
                 for bonded in self.select_bonded(_b):
-                    return iter_atoms(_a, bonded, n, min_bond_order_, stop)
+                    return iter_atoms(_a, bonded, _n, min_bond_order_, stop)
 
         return iter_atoms(atom_a, atom_b, 1, min_bond_order, len(self.bonds))
 
@@ -491,3 +493,18 @@ class MoleculeWithCharge(Molecule):
         potentials = (np.array(atomic_charges) / distances).sum(axis=1)
 
         return grids.Cube.assign_new_values_to(template_cube, potentials.reshape(template_cube.n_voxels))
+
+    def error_cube(self, potential, **kwargs):
+        """
+        Based on the respective charges of atoms within this molecule,
+            calculate the 3D electrostatic potential subtracted by the actual potential values.
+            This is a wrapper function for the :method:`entities.MoleculeWithCharge.reproduceCube` method.
+
+        :param potential: A :class:`grids.Cube` object containing the actual potential.
+        :param kwargs: Extra keyword arguments to be passed to the distance transform method,
+            from which distances to atoms are evaluated.
+        :return: Cube object containing errors of the electrostatic potential.
+        """
+        return grids.Cube.assign_new_values_to(potential,
+                                               self.reproduce_cube(potential, **kwargs) - potential,
+                                               )
