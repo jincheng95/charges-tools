@@ -122,6 +122,28 @@ class Cube(object):
 
                 f.write(s)
 
+    def plot(self, distance=200, global_max=None, grid=True, **kwargs):
+        from pyqtgraph.Qt import QtCore, QtGui
+        from chargetools.plotting.PyQtGraph import widgets, renderers
+        app = QtGui.QApplication([])
+        widget = widgets.SyncedWidget(cube_file=self, **kwargs)
+        widget.opts['distance'] = distance
+        widget.setWindowTitle(self.from_file)
+
+        # Add in atoms
+        for atom_shader in renderers.get_atoms(self):
+            widget.addItem(atom_shader)
+
+        # Plot actual cube field value
+        # this needs to be plotted last, its density will hide most other components
+        elements = renderers.get_volume(self, global_max=global_max, grid=grid, midpoint=0)
+        for element in elements:
+            widget.addItem(element)
+
+        widget.show()
+
+        QtGui.QApplication.instance().exec_()
+
     @classmethod
     def assign_new_values_to(cls, original_cube, new_values):
         """
