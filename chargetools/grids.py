@@ -1,10 +1,12 @@
 from collections import OrderedDict
+import itertools
 
 import numpy as np
 from scipy.spatial.distance import cdist
 
 from chargetools.constants import AXES_NAMES
 from chargetools.exceptions import InputError
+from chargetools.utils.utils import chained_or
 
 
 class Cube(object):
@@ -210,36 +212,31 @@ class Cube(object):
         """
         if callable(condition):
             mask_array = condition(self.values)
-        elif isinstance(condition, (np.ndarray, np.generic,)):
-            mask_array = condition
         else:
-            raise InputError("Condition argument must be a callable function or a masking numpy array.")
+            mask_array = condition
         return np.where(mask_array, self.values, replace_with)
 
-    def points_labelled_by_closest_atom(self, *atom_label_numbers):
+    def points_labelled_by_closest_atom(self, *atom_descriptors, **kwargs):
         """
         Label all points in the 3D space with label of closest atom to the point in question.
 
-        :type atom_label_numbers: [int, ...]
-        :param atom_label_numbers: Atom labels to be evaluated,
-            if one is included, points closest to this atom will be considered for the next closest atom.
-            If no arguments are passed to this function, then all atom labels will be evaluated.
         :rtype: numpy.array
         :return: Numpy array containing labels of closest atom at various points.
         """
         # if no arg, then all atoms are used
-        if not atom_label_numbers:
-            atom_label_numbers = self.molecule.list_of_atom_property('label')
-        atom_positions = [atom.position for atom in self.molecule.atoms
-                          if not atom_label_numbers or atom.label in atom_label_numbers]
+        if atom_descriptors:
+            atoms = self.molecule.select_descriptor(*atom_descriptors)
+        else:
+            atoms = self.molecule.atoms
 
-        closest_by_args = cdist(self.flat_coordinates, np.array(atom_positions)
+        atom_positions = np.array([atom.position for atom in atoms])
+        closest_by_args = cdist(self.flat_coordinates, atom_positions, **kwargs
                                 ).argmin(axis=1).reshape(self.n_voxels)
 
         # Turn indices of argument in atom_label_numbers into actual label
-        return np.vectorize(atom_label_numbers.__getitem__)(closest_by_args)
+        return np.vectorize(atoms.__getitem__)(closest_by_args)
 
-    def distance_to_closest_atom(self, *atom_label_numbers):
+    def distance_to_closest_atom(self, *atom_descriptors):
         """
         Label all points in the 3D space with Euclidean distance distance to closest atom.
 
@@ -251,13 +248,28 @@ class Cube(object):
         :return: Numpy array containing distance to closest atom at various points.
         """
         # if no arg, then all atoms are used
-        if not atom_label_numbers:
-            atom_label_numbers = [atom.label for atom in self.molecule.atoms]
-        atom_positions = [atom.position for atom in self.molecule.atoms
-                          if not atom_label_numbers or atom.label in atom_label_numbers]
+        if atom_descriptors:
+            atoms = self.molecule.select_descriptor(atom_descriptors)
+        else:
+            atoms = self.molecule.atoms
 
+        atom_positions = [atom.position for atom in atoms]
         return cdist(self.flat_coordinates, np.array(atom_positions)
                      ).min(axis=1).reshape(self.n_voxels)
+
+    def value_by_atom(self, selected_descriptors, filter_descriptors):
+        # Get an array of closest atoms
+        atom_values = self.points_labelled_by_closest_atom(*filter_descriptors)
+
+        # Select values which are in selected values
+        select_args = []
+        for selected_descriptor in selected_descriptors:
+            atoms = self.molecule.select_descriptor(selected_descriptor)
+            for atom in atoms:
+                select_args.append(atom_values == atom)
+
+        chained_or_mask = chained_or(*select_args)
+        return self.filter_values(chained_or_mask)
 
     @property
     def _grid_args(self):

@@ -51,8 +51,8 @@ class Atom(object):
             return self.symbol == descriptor
         elif isinstance(descriptor, int):
             return self.label == descriptor
-        elif isinstance(descriptor, Atom) or issubclass(descriptor, Atom):
-            return self is descriptor
+        elif isinstance(descriptor, Atom):
+            return self == descriptor
 
     @classmethod
     def copy(cls, atom):
@@ -227,11 +227,13 @@ class Molecule(object):
         except IndexError:
             raise InputError('Label number argument is larger than the number of atoms contained in this molecule.')
 
-    def select_symbol(self, *symbols):
-        atoms = [atom for atom in self.atoms if atom.symbol in symbols]
-        if len(atoms) == 1:
-            return atoms[0]
-        return atoms
+    def select_descriptor(self, *descriptors):
+        res = []
+        for descriptor in descriptors:
+            for atom in self.atoms:
+                if atom.descriptor_compare(descriptor):
+                    res.append(atom)
+        return res
 
     def list_of_atom_property(self, property_name):
         """

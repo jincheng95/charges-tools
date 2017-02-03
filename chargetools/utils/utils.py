@@ -1,3 +1,4 @@
+import numpy as np
 import periodictable
 
 
@@ -18,6 +19,15 @@ def int_if_close(floating_number, tolerance=0.0001):
     if abs(round(floating_number, 0) - floating_number) <= tolerance:
         return round(floating_number, 0)
     return floating_number
+
+
+def chained_or(*args):
+    if args:
+        res = args[0]
+        for arg in args[1:]:
+            res = np.logical_or(res, arg)
+        return res
+    return False
 
 
 def atomic_number_to_symbol(number):
