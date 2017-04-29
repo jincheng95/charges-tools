@@ -1,3 +1,6 @@
+import re
+from io import BytesIO
+
 import numpy as np
 import periodictable
 
@@ -42,3 +45,30 @@ def symbol_to_atomic_number(symbol):
         if element.symbol == symbol:
             return element.number
     return None
+
+
+def skip_til_occurence(iterator, line_re, count_until):
+    count = 0
+    while count < count_until:
+        line = next(iterator)
+        if re.search(line_re, line):
+            count += 1
+
+
+def consume_lines(iterator, skip=3, include_regex=r'\S'):
+    res = ""
+    count = 0
+
+    line = next(iterator)
+    while re.search(include_regex, line):
+        if count >= skip:
+            res += line
+
+        count += 1
+        line = next(iterator)
+    return res
+
+
+def genfromstring(string, *args, **kwargs):
+    s = BytesIO(string.encode())
+    return np.genfromtxt(s, *args, **kwargs)
